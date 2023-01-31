@@ -135,7 +135,7 @@ contract Stake is Ownable, ReentrancyGuard {
     //////////
 
     // To know that the user had staked NFT or not
-    function StakeInfo(uint256 tokenID) internal view returns (address) {
+    function StakeInfo(uint256 tokenID) external view returns (address) {
         address token_user = stakeIDs[tokenID].owner;
         return token_user;
     }
