@@ -17,48 +17,50 @@ contract Stake is Ownable, ReentrancyGuard {
 
     uint256 mintimeperiod = 1 days;
     uint256 maxtimeperiod = 90 days;
-    uint256 max_rewards_perNFT;
+    uint256 max_rewards_perNFT; // deciding the rewards_per_nft based on (rewards_per_day* max_time)
+    uint256 rewardsPerDay;
+
+    event stake_status(
+        address indexed owner,
+        uint256 stake_time,
+        uint256 indexed nft_id
+    );
 
     event withdraw_status(
-        uint256 nft_id,
+        address indexed owner,
+        uint256 indexed nft_id,
         uint256 nft_withdrawn_time,
         uint256 current_rewards
     );
     event rewards_status(
+        address indexed staker,
         uint256 timeofclaim,
         uint256 NFTs_staked,
         uint256 clamed_rewards
     );
 
     struct tokendetails {
-        //token owner
         address owner;
-        // staked time
         uint256 staketime;
-        //current rewards which are staked out
-        uint256 present_rewards;
-        // rewards which can be clamed out
+        uint256 present_rewards; //rewards staked till date
         uint256 claimable_rewards;
-        // updated time while rewards clammed
         uint256 timeOfLastUpdate;
     }
     // Details of the respective token
-    mapping(uint256 => tokendetails) public stakeIDs;
+    mapping(uint256 => tokendetails) internal stakeIDs;
     // user info of the staked tokens
     mapping(address => uint256[]) internal usersNFT;
-    // rewards allocated per day
-    uint256 private rewardsPerDay;
 
     constructor(
         IERC721 _nftCollection,
         IERC20 _rewardsToken,
-        uint rewardsperday,
-        uint max_rewards_per_nft
+        uint256 rewardsperday,
+        uint256 max_rewards_per_nft
     ) {
         nftCollection = _nftCollection;
         rewardsToken = _rewardsToken;
         rewardsPerDay = rewardsperday;
-        max_rewards_per_nft=max_rewards_perNFT;
+        max_rewards_per_nft = max_rewards_perNFT;
     }
 
     // NFT staking function
@@ -73,15 +75,16 @@ contract Stake is Ownable, ReentrancyGuard {
         usersNFT[msg.sender].push(_tokenId);
 
         stakeIDs[_tokenId] = tokendetails(msg.sender, block.timestamp, 0, 0, 0);
+
+        emit stake_status(msg.sender, block.timestamp, _tokenId);
     }
 
-    // extracting the Nft from the contract to users address
+    // withdrawing the Nft from the contract
     function withdraw(uint256 _tokenId) external nonReentrant {
         require(
             stakeIDs[_tokenId].owner == msg.sender,
             "withdrawer is not the owner of the NFTs"
         );
-
         require(
             (block.timestamp - stakeIDs[_tokenId].staketime) >= mintimeperiod,
             "The NFT should be staked atleast for a day"
@@ -106,18 +109,19 @@ contract Stake is Ownable, ReentrancyGuard {
         }
 
         emit withdraw_status(
+            msg.sender,
             _tokenId,
             block.timestamp,
             stakeIDs[_tokenId].claimable_rewards
         );
-
-        stakeIDs[_tokenId] = tokendetails(address(0), 0, 0, 0, 0);
+        delete stakeIDs[_tokenId];
     }
 
-    // getting the rewards clamed by staking the NFTs
-    function claimRewards() external nonReentrant{
+    //  claiming rewards for the staked NFTs
+    function claimRewards() external nonReentrant {
         uint256[] memory tokens = usersNFT[msg.sender];
         uint256 rewards;
+
         calculateRewards(msg.sender);
 
         for (uint256 i; i < tokens.length; i++) {
@@ -128,13 +132,20 @@ contract Stake is Ownable, ReentrancyGuard {
         require(rewards > 0, "You have no rewards to claim");
         rewardsToken.safeTransfer(msg.sender, rewards);
 
-        emit rewards_status(block.timestamp, tokens.length, rewards);
+        emit rewards_status(
+            msg.sender,
+            block.timestamp,
+            tokens.length,
+            rewards
+        );
     }
+
     //////////
     // View //
     //////////
 
-    // To know that the user had staked NFT or not
+    // Getting the owner address if nft staked
+    // used for marketplace contract
     function StakeInfo(uint256 tokenID) external view returns (address) {
         address token_user = stakeIDs[tokenID].owner;
         return token_user;
@@ -151,14 +162,15 @@ contract Stake is Ownable, ReentrancyGuard {
                     maxtimeperiod
                 ) {
                     uint256 rewards = (((block.timestamp -
-                        stakeIDs[tokens[i]].staketime) / 60) * rewardsPerDay);
+                        stakeIDs[tokens[i]].staketime) / 86400) *
+                        rewardsPerDay);
                     _rewards += rewards;
                 } else {
                     _rewards += max_rewards_perNFT;
                 }
             } else {
                 uint256 rewards = (((block.timestamp -
-                    stakeIDs[tokens[i]].timeOfLastUpdate) / 60) *
+                    stakeIDs[tokens[i]].timeOfLastUpdate) / 86400) *
                     rewardsPerDay);
                 if (
                     rewards + stakeIDs[tokens[i]].present_rewards <=
@@ -193,7 +205,8 @@ contract Stake is Ownable, ReentrancyGuard {
                     maxtimeperiod
                 ) {
                     uint256 rewards = (((block.timestamp -
-                        stakeIDs[tokens[i]].staketime) / 60) * rewardsPerDay);
+                        stakeIDs[tokens[i]].staketime) / 86400) *
+                        rewardsPerDay);
                     stakeIDs[tokens[i]].present_rewards = rewards;
                     stakeIDs[tokens[i]].claimable_rewards = rewards;
                 } else {
@@ -202,7 +215,7 @@ contract Stake is Ownable, ReentrancyGuard {
                 }
             } else {
                 uint256 rewards = (((block.timestamp -
-                    stakeIDs[tokens[i]].timeOfLastUpdate) / 60) *
+                    stakeIDs[tokens[i]].timeOfLastUpdate) / 86400) *
                     rewardsPerDay);
 
                 if (
