@@ -5,6 +5,7 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "./Stake.sol";
 
 contract NFTMarketplace is ERC721URIStorage {
 
@@ -17,6 +18,8 @@ contract NFTMarketplace is ERC721URIStorage {
     address payable owner;
     //The fee charged by the marketplace to be allowed to list an NFT
     uint256 listPrice = 0.01 ether;
+    // defining the staking contract
+    Stake immutable stake;
 
     //The structure to store info about a listed token
     struct ListedToken {
@@ -39,8 +42,9 @@ contract NFTMarketplace is ERC721URIStorage {
     //This mapping maps tokenId to token info and is helpful when retrieving details about a tokenId
     mapping(uint256 => ListedToken) private idToListedToken;
 
-    constructor() ERC721("NFTMarketplace", "NFTM") {
+    constructor(address staking) ERC721("NFTMarketplace", "NFTM") {
         owner = payable(msg.sender);
+        stake=Stake(staking);
     }
 
     function updateListPrice(uint256 _listPrice) public payable {
@@ -84,6 +88,8 @@ contract NFTMarketplace is ERC721URIStorage {
     }
 
     function createListedToken(uint256 tokenId, uint256 price) private {
+        // checking wheather the token is staked or not before listing 
+        require(stake.StakeInfo(tokenId)!=msg.sender,"The token is staked so cannot list");
         //Make sure the sender sent enough ETH to pay for listing
         require(msg.value == listPrice, "Hopefully sending the correct price");
         //Just sanity check
